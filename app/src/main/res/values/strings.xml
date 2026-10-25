@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">DNS Switcher</string>
+    <string name="service_label">DNS Switcher – automatischer DNS-Wechsel</string>
+    <string name="service_description">Erkennt, welche App bzw. welches Spiel gerade geöffnet ist, und stellt das private DNS automatisch um (z. B. AdGuard oder Normal). Es werden keine Bildschirminhalte gelesen – nur der Paketname der geöffneten App. Von FGSeRaser – github.com/FGSeRaser</string>
+    <string name="tile_label">DNS-Automatik</string>
+</resources>
