@@ -4,6 +4,11 @@ Android-App, die das **private DNS automatisch umstellt**, je nachdem, welche Ap
 Normalerweise ist **AdGuard** aktiv. Für ausgewählte Spiele schaltet die App auf **Normal** (Automatisch) und beim Verlassen wieder zurück.
 
 Entwickelt von **FGSeRaser** – https://github.com/FGSeRaser
+![DNS Switcher](docs/banner.png)
+
+| Apps | Regel | Profile | Verlauf | Info |
+|---|---|---|---|---|
+| ![](docs/01_apps.png) | ![](docs/02_regel.png) | ![](docs/03_profile.png) | ![](docs/04_verlauf.png) | ![](docs/05_info.png) |
 
 ## Bauen
 
