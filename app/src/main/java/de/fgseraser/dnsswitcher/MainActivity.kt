@@ -45,6 +45,10 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import rikka.shizuku.Shizuku
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -122,6 +126,7 @@ class MainActivity : ComponentActivity() {
 // ======================================================================
 
 private enum class Tab(val title: String, val icon: ImageVector) {
+    Dashboard("Nerd", Icons.Filled.Speed),
     Apps("Apps", Icons.Filled.Apps),
     Profiles("DNS-Profile", Icons.Filled.Dns),
     History("Verlauf", Icons.Filled.History),
@@ -130,7 +135,7 @@ private enum class Tab(val title: String, val icon: ImageVector) {
 
 @Composable
 private fun MainScreen(tick: Int) {
-    var tab by rememberSaveable { mutableStateOf(Tab.Apps) }
+    var tab by rememberSaveable { mutableStateOf(Tab.Dashboard) }
     // Every change in the app increases this, so all screens read the store again
     var version by remember { mutableIntStateOf(0) }
     val refresh: () -> Unit = { version++ }
@@ -153,6 +158,7 @@ private fun MainScreen(tick: Int) {
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
             when (tab) {
+                Tab.Dashboard -> DashboardScreen(stamp)
                 Tab.Apps -> AppsScreen(stamp, refresh)
                 Tab.Profiles -> ProfilesScreen(stamp, refresh)
                 Tab.History -> HistoryScreen(stamp, refresh)
@@ -411,6 +417,18 @@ private fun StatusCard(stamp: Int, refresh: () -> Unit) {
     val current = remember(stamp) { DnsController.describeCurrent(context) }
     val enabled = remember(stamp) { Store.isEnabled(context) }
 
+    // Shizuku: after the user allowed access, grant the DNS permission right away
+    DisposableEffect(Unit) {
+        val l = Shizuku.OnRequestPermissionResultListener { code, result ->
+            if (code == ShizukuHilfe.CODE && result == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                context.notify(if (ShizukuHilfe.freischalten(context)) "Berechtigung über Shizuku erteilt" else "Shizuku konnte die Berechtigung nicht setzen")
+                refresh()
+            }
+        }
+        try { Shizuku.addRequestPermissionResultListener(l) } catch (e: Throwable) { }
+        onDispose { try { Shizuku.removeRequestPermissionResultListener(l) } catch (e: Throwable) { } }
+    }
+
     Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -445,11 +463,27 @@ private fun StatusCard(stamp: Int, refresh: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Palette.Back).padding(10.dp)
             )
             Spacer(Modifier.height(6.dp))
-            OutlinedButton(onClick = {
-                val ok = DnsController.grantWithRoot(context)
-                context.notify(if (ok) "Berechtigung mit Root erteilt" else "Root nicht verfügbar – bitte den ADB-Befehl verwenden")
-                refresh()
-            }) { Text("Mit Root freischalten") }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    when {
+                        !ShizukuHilfe.laeuft() -> {
+                            context.notify("Shizuku läuft nicht – Shizuku-App öffnen und starten")
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            } catch (e: Exception) { }
+                        }
+                        !ShizukuHilfe.hatErlaubnis() -> ShizukuHilfe.anfragen()
+                        else -> context.notify(if (ShizukuHilfe.freischalten(context)) "Berechtigung über Shizuku erteilt" else "Shizuku konnte die Berechtigung nicht setzen")
+                    }
+                    refresh()
+                }) { Text("Mit Shizuku") }
+                OutlinedButton(onClick = {
+                    val ok = DnsController.grantWithRoot(context)
+                    context.notify(if (ok) "Berechtigung mit Root erteilt" else "Root nicht verfügbar – Shizuku oder ADB verwenden")
+                    refresh()
+                }) { Text("Mit Root") }
+            }
+            Text("Ohne PC: Shizuku installieren, über „Kabelloses Debugging“ starten, dann „Mit Shizuku“ tippen.", color = Palette.Muted, fontSize = 11.sp)
         }
         StatusLine(service, if (service) "Bedienungshilfe eingeschaltet" else "Bedienungshilfe ist aus") {
             if (!service) {
@@ -650,7 +684,7 @@ private fun AboutScreen() {
     Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
         Header("Info", "So funktioniert der DNS Switcher")
         Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            Step("1", "Berechtigung (einmalig)", "Handy per USB mit dem PC verbinden (USB-Debugging an) und ausführen:\n${DnsController.adbCommand(context)}\nGeht auch mit der ADB ToolBox → Konsole. Mit Root reicht der Knopf in der App.")
+            Step("1", "Berechtigung (einmalig)", "Am einfachsten ohne PC: Shizuku-App installieren, per „Kabelloses Debugging“ starten und in der App „Mit Shizuku“ tippen.\nAlternativ per PC (USB-Debugging an):\n${DnsController.adbCommand(context)}\nGeht auch mit der ADB ToolBox → Konsole. Mit Root reicht der Knopf „Mit Root“.")
             Step("2", "Bedienungshilfe einschalten", "Einstellungen → Bedienungshilfen → Installierte Apps → DNS Switcher. Darüber erkennt die App, welche App gerade offen ist – Bildschirminhalte werden nicht gelesen.")
             Step("3", "Regeln festlegen", "Standard ist AdGuard. Tippe ein Spiel an und wähle 'Normal' – solange es offen ist, wird AdGuard ausgeschaltet. Beim Verlassen kommt automatisch wieder AdGuard.")
             Step("4", "Pausieren", "Über den Schalter oben oder die Schnellkachel 'DNS-Automatik' (Benachrichtigungsleiste bearbeiten → Kachel hinzufügen).")
@@ -666,6 +700,7 @@ private fun AboutScreen() {
                 color = Palette.Muted, fontSize = 13.sp, lineHeight = 19.sp
             )
         }
+        UpdateKarte()
         Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(44.dp).clip(CircleShape).background(Palette.AccentSoft), contentAlignment = Alignment.Center) {
@@ -689,6 +724,31 @@ private fun AboutScreen() {
                 border = BorderStroke(1.dp, Palette.Accent),
                 modifier = Modifier.fillMaxWidth()
             ) { Text("github.com/FGSeRaser", color = Palette.Accent) }
+        }
+    }
+}
+
+/** Looks on GitHub for a newer release. */
+@Composable
+private fun UpdateKarte() {
+    val context = LocalContext.current
+    var neu by remember { mutableStateOf<String?>(null) }
+    var geprueft by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        neu = try { UpdatePruefung.neuere() } catch (e: Exception) { null }
+        geprueft = true
+    }
+    if (!geprueft) return
+    Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        if (neu == null) {
+            Text("✓ Du hast die neueste Version (${BuildConfig.VERSION_NAME})", color = Palette.Good, fontSize = 14.sp)
+        } else {
+            Text("Update verfügbar: $neu", color = Palette.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text("Installiert: ${BuildConfig.VERSION_NAME}", color = Palette.Muted, fontSize = 12.sp)
+            Spacer(Modifier.height(8.dp))
+            Button(onClick = {
+                try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(UpdatePruefung.SEITE))) } catch (e: Exception) { context.notify("Kein Browser gefunden") }
+            }, modifier = Modifier.fillMaxWidth()) { Text("APK herunterladen") }
         }
     }
 }

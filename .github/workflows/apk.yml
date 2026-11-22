@@ -1,0 +1,73 @@
+# DNS Switcher – APK bauen und als Release veröffentlichen (von FGSeRaser)
+name: APK bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # Optional: eigener Schlüssel (z. B. deine debug.keystore als Base64), damit Updates über die alte App installiert werden
+      - name: Signierschlüssel
+        env:
+          KEYSTORE_B64: ${{ secrets.DNSSWITCHER_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/dnsswitcher.keystore"
+            echo "DNSSWITCHER_KEYSTORE_DATEI=$RUNNER_TEMP/dnsswitcher.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Kein Secret DNSSWITCHER_KEYSTORE – die APK wird mit dem Debug-Schlüssel von GitHub signiert."
+          fi
+
+      - name: Bauen
+        env:
+          DNSSWITCHER_KEYSTORE_PASS: ${{ secrets.DNSSWITCHER_KEYSTORE_PASS }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          VERSION="1.1.${GITHUB_RUN_NUMBER}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          mkdir -p ausgabe
+          cp app/build/outputs/apk/release/app-release.apk "ausgabe/DNS-Switcher-v$VERSION.apk"
+
+      - name: Release veröffentlichen
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: DNS Switcher ${{ env.VERSION }}
+          make_latest: true
+          files: ausgabe/*.apk
+          body: |
+            **DNS Switcher** – stellt das private DNS automatisch je nach App um (AdGuard für alles, „Normal“ für ausgewählte Spiele).
+            Neu: Nerd-Dashboard mit Live-Schutzcheck, DNS-Benchmark, Blockier-Test, Nutzungsstatistik und AdGuard-Konto-Zählern; Freischalten über Shizuku ohne PC.
+            von [FGSeRaser](https://github.com/FGSeRaser)
+
+            **Installieren:** APK unten herunterladen und auf dem Handy öffnen.
+
+      # Nur die neuesten 3 Releases behalten (sortiert nach Versionsnummer)
+      - name: Alte Releases löschen
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName \
+            --jq "map(select(.tagName | test(\"^v[0-9]+(\\\\.[0-9]+)*$\"))) | sort_by(.tagName | ltrimstr(\"v\") | split(\".\") | map(tonumber)) | reverse | .[3:] | .[].tagName" |
+          while read -r tag; do
+            [ -n "$tag" ] && gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag -y || true
+          done

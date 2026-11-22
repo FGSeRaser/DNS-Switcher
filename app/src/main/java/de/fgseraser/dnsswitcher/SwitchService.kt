@@ -66,7 +66,9 @@ class SwitchService : AccessibilityService() {
         if (!Store.isEnabled(this)) return
         val profile = Store.profileFor(this, pkg)
         try {
-            if (DnsController.apply(this, profile)) {
+            val changed = DnsController.apply(this, profile)
+            Ereignisse.merken(this, pkg, profile.id, changed)
+            if (changed) {
                 val label = appLabel(pkg)
                 Store.log(this, "$label → ${profile.name}")
                 if (Store.showToast(this)) Toast.makeText(this, "DNS: ${profile.name}", Toast.LENGTH_SHORT).show()
@@ -129,6 +131,7 @@ class SwitchService : AccessibilityService() {
             try {
                 val profile = Store.defaultProfile(context)
                 if (DnsController.apply(context, profile)) Store.log(context, "$reason → ${profile.name}")
+                Ereignisse.merken(context, "", profile.id, true)
             } catch (e: Exception) {
                 // no permission – nothing we can do
             }
