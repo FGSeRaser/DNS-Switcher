@@ -32,6 +32,13 @@ class BlockerService : VpnService() {
     private var domains: Set<String> = emptySet()
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            // Android hält den VPN-Dienst gebunden, stopService() allein beendet ihn nicht.
+            // Darum wird der Tunnel hier selbst geschlossen.
+            beenden()
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (tun == null) starten()
         return START_NOT_STICKY
     }
@@ -230,13 +237,15 @@ class BlockerService : VpnService() {
         if (tun == null && !running) return
         stopping = true
         running = false
-        pool?.shutdownNow()
-        pool = null
+        // Zuerst den Tunnel schließen – erst dadurch trennt Android die VPN-Verbindung
         try {
             tun?.close()
         } catch (e: Exception) {
+            Store.log(this, "Blocker: Tunnel schließen fehlgeschlagen: ${e.message}")
         }
         tun = null
+        pool?.shutdownNow()
+        pool = null
         leser?.interrupt()
         domains = emptySet()
         Store.log(this, "Komplett-Blocker beendet")
@@ -255,6 +264,7 @@ class BlockerService : VpnService() {
     }
 
     companion object {
+        private const val ACTION_STOP = "de.fgseraser.dnsswitcher.BLOCKER_STOP"
         private const val CLIENT_IP = "10.77.0.1"
         private const val DNS_IP = "10.77.0.2"
 
@@ -270,7 +280,7 @@ class BlockerService : VpnService() {
         }
 
         fun stoppen(context: Context) {
-            context.stopService(Intent(context, BlockerService::class.java))
+            context.startService(Intent(context, BlockerService::class.java).setAction(ACTION_STOP))
         }
     }
 }
