@@ -37,6 +37,13 @@ Entwickelt von **FGSeRaser** – https://github.com/FGSeRaser
 - Kurze Einblendung beim Wechsel (abschaltbar) und ein Verlauf der letzten 200 Umschaltungen.
 - Wenn die Bedienungshilfe ausgeschaltet wird, stellt die App wieder den Standard ein.
 
+## HaGeZi-Listen und Komplett-Blocker
+
+Im Tab **DNS-Profile** gibt es zwei Wege, die [HaGeZi-Blocklisten](https://github.com/hagezi/dns-blocklists) zu nutzen:
+
+- **Fertige Listen-Server:** Unter *Hinzufügen → Vorlagen* stehen HaGeZi Light, Normal, Pro, Pro++, Ultimate und TIF (ControlD) sowie die HaGeZi-eigenen Server. Als Profil angelegt, funktionieren sie wie jedes andere Profil, auch pro Spiel.
+- **Komplett-Blocker:** Die Karte „Komplett-Blocker" lädt die gewählten Listen aufs Handy (eine oder mehrere, z. B. Pro mini + Bedrohungen + Glücksspiel) und blockt alles darin lokal samt Subdomains. Das läuft über einen VPN-Tunnel, der nur die DNS-Anfragen filtert; der übrige Verkehr bleibt unberührt. **Solange er läuft, wechselt der Spiele-DNS nicht mehr** (Automatik pausiert, privates DNS aus). Beim Beenden geht alles zurück. Große Listen brauchen mehr Arbeitsspeicher, auf schwächeren Handys besser die mini-Versionen nehmen.
+
 ## Nerd-Dashboard
 
 - **Schutz jetzt:** fragt live und ohne Cache über das System-DNS bekannte Werbe-Domains ab und zeigt, wie viel davon gerade blockiert wird. Dazu kommen die Antwortzeit und ob normale Seiten noch gehen.
