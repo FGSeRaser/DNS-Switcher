@@ -64,6 +64,8 @@ class SwitchService : AccessibilityService() {
 
     private fun switchFor(pkg: String) {
         if (!Store.isEnabled(this)) return
+        // Komplett-Blocker läuft: Spiele-DNS wechselt nicht mehr
+        if (BlockerService.running) return
         val profile = Store.profileFor(this, pkg)
         try {
             val changed = DnsController.apply(this, profile)
@@ -128,6 +130,7 @@ class SwitchService : AccessibilityService() {
 
         /** Back to the default profile (when pausing or when the service stops). */
         fun restoreDefault(context: Context, reason: String) {
+            if (BlockerService.running) return // Komplett-Blocker braucht das private DNS aus
             try {
                 val profile = Store.defaultProfile(context)
                 if (DnsController.apply(context, profile)) Store.log(context, "$reason → ${profile.name}")

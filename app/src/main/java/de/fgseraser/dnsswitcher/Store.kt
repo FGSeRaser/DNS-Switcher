@@ -41,7 +41,17 @@ object Store {
         "Mullvad Werbeblocker" to "adblock.dns.mullvad.net",
         "Cloudflare" to "one.one.one.one",
         "Google" to "dns.google",
-        "Quad9" to "dns.quad9.net"
+        "Quad9" to "dns.quad9.net",
+        // HaGeZi-Listen als fertige DNS-Server (ControlD, kostenlos)
+        "HaGeZi Light" to "x-hagezi-light.freedns.controld.com",
+        "HaGeZi Normal" to "x-hagezi-normal.freedns.controld.com",
+        "HaGeZi Pro" to "x-hagezi-pro.freedns.controld.com",
+        "HaGeZi Pro++" to "x-hagezi-proplus.freedns.controld.com",
+        "HaGeZi Ultimate" to "x-hagezi-ultimate.freedns.controld.com",
+        "HaGeZi TIF (Bedrohungen)" to "x-hagezi-tif.freedns.controld.com",
+        // eigene HaGeZi-Server (Deutschland)
+        "HaGeZi DNS (Pro + TIF)" to "root.hagezi.org",
+        "HaGeZi nur Bedrohungen" to "ctif.hagezi.org"
     )
 
     private val builtIns = listOf(
@@ -121,6 +131,15 @@ object Store {
     /** The profile that should be active while this app is in the foreground. */
     fun profileFor(context: Context, packageName: String): DnsProfile =
         profile(context, rules(context)[packageName]) ?: defaultProfile(context)
+
+    // ---------- Komplett-Blocker (lokale HaGeZi-Listen) ----------
+
+    /** IDs der gewählten Blocklisten (siehe Blocklisten.alle). */
+    fun blockerListen(context: Context): Set<String> =
+        (prefs(context).getString("blocker_listen", "") ?: "").split(',').filter { it.isNotBlank() }.toSet()
+
+    fun setBlockerListen(context: Context, ids: Set<String>) =
+        prefs(context).edit().putString("blocker_listen", ids.joinToString(",")).apply()
 
     // ---------- Options ----------
 

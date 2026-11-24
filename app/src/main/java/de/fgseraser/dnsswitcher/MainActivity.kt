@@ -6,10 +6,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.net.Uri
+import android.net.VpnService
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -51,6 +54,7 @@ import androidx.compose.runtime.LaunchedEffect
 import rikka.shizuku.Shizuku
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -73,6 +77,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -94,6 +99,8 @@ import androidx.core.graphics.drawable.toBitmap
 import de.fgseraser.dnsswitcher.ui.DnsSwitcherTheme
 import de.fgseraser.dnsswitcher.ui.Palette
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -548,6 +555,7 @@ private fun ProfilesScreen(stamp: Int, refresh: () -> Unit) {
                 }
             }
         }
+        item { BlockerKarte(stamp, refresh) }
         item {
             Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Alle Profile", color = Palette.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
@@ -617,13 +625,13 @@ private fun AddProfileDialog(onDismiss: () -> Unit, onAdd: (String, String) -> U
                 Spacer(Modifier.height(10.dp))
                 Text("Vorlagen", color = Palette.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 Store.presets.forEach { (presetName, presetHost) ->
-                    Row(
+                    Column(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
                             name = presetName
                             host = presetHost
                         }.padding(vertical = 8.dp)
                     ) {
-                        Text(presetName, color = Palette.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(presetName, color = Palette.Text, fontSize = 14.sp)
                         Text(presetHost, color = Palette.Muted, fontSize = 12.sp)
                     }
                 }
@@ -634,6 +642,155 @@ private fun AddProfileDialog(onDismiss: () -> Unit, onAdd: (String, String) -> U
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
     )
+}
+
+// ======================================================================
+// Komplett-Blocker (lokale HaGeZi-Listen)
+// ======================================================================
+
+@Composable
+private fun BlockerKarte(stamp: Int, refresh: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var gewaehlt by remember(stamp) { mutableStateOf(Store.blockerListen(context)) }
+    var laedt by remember { mutableStateOf(false) }
+    var fehler by remember { mutableStateOf("") }
+    var warnung by remember { mutableStateOf(false) }
+    val laeuft = remember(stamp) { BlockerService.running }
+    val summe = Blocklisten.alle.filter { it.id in gewaehlt }.sumOf { it.eintraege }
+    val megabyte = summe / 10_000 // grob 100 Byte pro Eintrag im Arbeitsspeicher
+
+    fun starten() {
+        scope.launch {
+            laedt = true
+            fehler = ""
+            var ok = true
+            for (liste in Blocklisten.alle) {
+                if (liste.id !in gewaehlt || Blocklisten.vorhanden(context, liste.id)) continue
+                if (!withContext(Dispatchers.IO) { Blocklisten.herunterladen(context, liste) }) ok = false
+            }
+            laedt = false
+            if (!ok) {
+                fehler = "Download fehlgeschlagen – Internet prüfen und nochmal versuchen."
+                return@launch
+            }
+            BlockerService.starten(context)
+            delay(700)
+            refresh()
+        }
+    }
+
+    val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { ergebnis ->
+        if (ergebnis.resultCode == android.app.Activity.RESULT_OK) starten()
+    }
+
+    fun anfordern() {
+        val intent = VpnService.prepare(context)
+        if (intent == null) starten() else vpnLauncher.launch(intent)
+    }
+
+    fun aktualisieren() {
+        scope.launch {
+            laedt = true
+            fehler = ""
+            var ok = true
+            for (liste in Blocklisten.alle) {
+                if (liste.id !in gewaehlt) continue
+                if (!withContext(Dispatchers.IO) { Blocklisten.herunterladen(context, liste) }) ok = false
+            }
+            laedt = false
+            fehler = if (!ok) {
+                "Download fehlgeschlagen – Internet prüfen."
+            } else if (laeuft) {
+                "Listen aktualisiert. Blocker einmal beenden und neu starten, damit sie gelten."
+            } else {
+                "Listen aktualisiert."
+            }
+        }
+    }
+
+    Card(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Text("Komplett-Blocker", color = Palette.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "Blockt Werbung, Tracker und mehr direkt auf dem Handy mit den HaGeZi-Listen. " +
+                "Wähle eine oder mehrere Listen – alles darin (samt Subdomains) wird blockiert.",
+            color = Palette.Muted, fontSize = 13.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        if (laeuft) {
+            StatusLine(true, "Läuft – der Spiele-DNS-Wechsel ist pausiert")
+        }
+        Blocklisten.alle.forEach { liste ->
+            val an = liste.id in gewaehlt
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable(enabled = !laeuft && !laedt) {
+                    gewaehlt = if (an) gewaehlt - liste.id else gewaehlt + liste.id
+                    Store.setBlockerListen(context, gewaehlt)
+                }.padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = an, onCheckedChange = null)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(liste.name, color = Palette.Text, fontSize = 14.sp)
+                    val extra = if (liste.hinweis.isNotEmpty()) " · ${liste.hinweis}" else ""
+                    Text("ca. ${liste.eintraege} Einträge$extra", color = Palette.Muted, fontSize = 12.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            if (summe == 0) "Noch keine Liste gewählt" else "Gewählt: ca. $summe Einträge · etwa $megabyte MB Arbeitsspeicher",
+            color = if (summe > 300_000) Palette.Warning else Palette.Muted, fontSize = 12.sp
+        )
+        if (fehler.isNotEmpty()) {
+            Text(fehler, color = Palette.Warning, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (laeuft) {
+                Button(onClick = {
+                    BlockerService.stoppen(context)
+                    scope.launch {
+                        delay(500)
+                        refresh()
+                    }
+                }) { Text("Blocker beenden") }
+            } else {
+                Button(enabled = summe > 0 && !laedt, onClick = { warnung = true }) { Text("Blocker starten") }
+            }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(enabled = summe > 0 && !laedt, onClick = { aktualisieren() }) { Text("Listen laden") }
+            if (laedt) {
+                Spacer(Modifier.width(12.dp))
+                CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+            }
+        }
+    }
+
+    if (warnung) {
+        AlertDialog(
+            onDismissRequest = { warnung = false },
+            containerColor = Palette.Surface,
+            title = { Text("Komplett-Blocker starten?") },
+            text = {
+                Text(
+                    "Solange der Komplett-Blocker läuft, wechselt der Spiele-DNS nicht mehr: " +
+                        "Die Automatik pausiert und das private DNS ist aus. " +
+                        "Wenn du den Blocker beendest, läuft alles wieder wie vorher." +
+                        if (summe > 300_000) "\n\nGroße Auswahl: Sie braucht etwa $megabyte MB Arbeitsspeicher und mehr Akku. " +
+                            "Auf schwächeren Handys lieber eine mini-Liste nehmen." else ""
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    warnung = false
+                    anfordern()
+                }) { Text("Trotzdem starten") }
+            },
+            dismissButton = { TextButton(onClick = { warnung = false }) { Text("Abbrechen") } }
+        )
+    }
 }
 
 // ======================================================================
