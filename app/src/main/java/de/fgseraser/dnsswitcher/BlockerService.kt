@@ -44,7 +44,7 @@ class BlockerService : VpnService() {
                 .addDnsServer(DNS_IP)
                 .addRoute(DNS_IP, 32)
                 .setMtu(1500)
-                .setBlocking(true)
+                .setBlocking(false) // sonst hält ein wartendes read() den Tunnel beim Beenden offen
                 .establish()
         } catch (e: Exception) {
             null
@@ -102,6 +102,10 @@ class BlockerService : VpnService() {
             while (!stopping) {
                 val n = eingang.read(puffer)
                 if (n < 0) break
+                if (n == 0) {
+                    Thread.sleep(15) // nichts da, kurz warten
+                    continue
+                }
                 if (n < 28) continue
                 if (((puffer[0].toInt() shr 4) and 0xF) != 4) continue
                 val ihl = (puffer[0].toInt() and 0xF) * 4
@@ -112,7 +116,7 @@ class BlockerService : VpnService() {
                 pool?.execute { beantworten(paket, ihl, ausgang) }
             }
         } catch (e: Exception) {
-            // Tunnel wurde geschlossen
+            // Tunnel wurde geschlossen oder Thread beendet
         }
     }
 
