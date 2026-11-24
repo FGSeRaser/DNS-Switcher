@@ -56,6 +56,16 @@
                 android:resource="@xml/accessibility_config" />
         </service>
 
+        <!-- Komplett-Blocker: lokaler DNS-Filter mit den HaGeZi-Listen (VPN-Tunnel nur für DNS) -->
+        <service
+            android:name=".BlockerService"
+            android:exported="false"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
         <!-- Shizuku: grant the permission without PC/ADB -->
         <provider
             android:name="rikka.shizuku.ShizukuProvider"
